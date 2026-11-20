@@ -33,7 +33,7 @@ jobs:
         with: { node-version: 22, cache: npm }
 
       - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: '17' }
+        with: { distribution: temurin, java-version: '21' }
 
       - name: install
         run: npm ci || npm install
