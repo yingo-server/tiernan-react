@@ -50,24 +50,41 @@ jobs:
         if: matrix.variant == 'fully'
         run: |
           # fully：GeckoView 内核打进 APK。保守做法：
-          # 1) gradle 依赖加 org.mozilla.geckoview
-          # 2) MainActivity 改为装载 GeckoView 的变体（同 dist 资产）
-          # 3) UA 加 GeckoView 标记（gateway.ts 探测用）
-          GV=$(grep -A1 'geckoview' tool/geckoview-version.txt 2>/dev/null | tail -1 | tr -d ' ')
-          GV_VER="${GV:-130.0.20240906153548}"
-          python3 - <<PYEOF
-          import re, pathlib
+          # 1) settings.gradle 加 Mozilla maven 仓库（GeckoView 不在 Google Maven）
+          # 2) app 依赖加 org.mozilla.geckoview:geckoview（版本取 tool/geckoview-version.txt）
+          # 3) GeckoMainActivity 装载 GeckoView（同 dist 资产，UA 带标记）
+          GV=$(tail -1 tool/geckoview-version.txt | tr -d '[:space:]')
+          echo "GeckoView version: $GV"
+          # 1) Mozilla maven 仓库
+          python3 - <<'PYEOF'
+          import pathlib
+          p = pathlib.Path('android/build.gradle')
+          s = p.read_text()
+          if 'maven.mozilla.org' not in s:
+              s = s.replace(
+                  'allprojects {',
+                  'allprojects {\n    repositories {\n        maven { url "https://maven.mozilla.org/maven2" }\n    }',
+                  1,
+              )
+          p.write_text(s)
+          print('mozilla repo added')
+          PYEOF
+          # 2) 依赖（用占位替换，避免 YAML 内插问题）
+          python3 - "$GV" <<'PYEOF'
+          import pathlib, sys
+          gv = sys.argv[1]
           g = pathlib.Path('android/app/build.gradle')
           s = g.read_text()
           if 'geckoview' not in s:
               s = s.replace(
                   'dependencies {',
-                  'dependencies {\n    implementation "org.mozilla.geckoview:geckoview:${GV_VER}"',
+                  f'dependencies {{\n    implementation "org.mozilla.geckoview:geckoview:{gv}"',
+                  1,
               )
-          s = s.replace('${GV_VER}', "$GV_VER") if '$GV_VER' not in s else s
           g.write_text(s)
+          print('geckoview dep added:', gv)
           PYEOF
-          # UA 标记（GeckoMainActivity 内设置）
+          # 3) GeckoMainActivity（UA 带 GeckoView 标记，gateway.ts 探测用）
           mkdir -p android/app/src/main/java/com/tiernan/music/next
           cat > android/app/src/main/java/com/tiernan/music/next/GeckoMainActivity.kt <<'KTEOF'
           package com.tiernan.music.next
@@ -91,8 +108,6 @@ jobs:
                   val view = GeckoView(this)
                   view.setSession(session)
                   setContentView(view)
-                  // Capacitor 产物由本地 http 服务器（嵌入 asset）提供；
-                  // 保守实现：加载 file:///android_asset/public/index.html
                   session.loadUri("resource://android/assets/public/index.html")
               }
           }
