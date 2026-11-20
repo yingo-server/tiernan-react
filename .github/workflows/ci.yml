@@ -1,0 +1,74 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'publish GitHub Pages / artifacts'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: install
+        run: npm ci || npm install
+
+      - name: typecheck
+        run: npx tsc -b --noEmit
+
+      - name: layout lint（布局数值门禁：页面零手写间距/尺寸）
+        if: always()
+        run: |
+          npx eslint src --ext .ts,.tsx -c eslint.layout.cjs --no-eslintrc 2>&1 | tee /tmp/layout.log || true
+          if grep -q "layout.ts（布局数值不由页面决定" /tmp/layout.log; then
+            echo "::error::布局数值违规（必须引用 theme/layout.ts 常量）"
+            exit 1
+          fi
+          echo "LAYOUT-LINT-OK"
+
+      - name: md5 签名冒烟（四向量）
+        if: always()
+        run: npx tsx src/kugou/md5.smoke.ts
+
+      - name: build
+        run: npm run build
+
+      - name: upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  release:
+    needs: [build]
+    if: github.event.inputs.release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: prepare gh-pages
+        run: |
+          mkdir -p pub
+          cp -r dist/* pub/
+      - name: deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: pub
+          force_orphan: true
