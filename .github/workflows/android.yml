@@ -114,34 +114,54 @@ jobs:
           KTEOF
           echo "geckoview variant applied"
 
-      - name: build apk (release, split per abi)
+      - name: build apk (release, abi splits + size guard)
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon -PversionName=0.1.0-${{ matrix.variant }}
+          # 两变体都强制 ABI 拆分（universal 是体积爆炸根因：GeckoView AAR
+          # 内含全 ABI 原生库，不拆分则全部塞进一个 APK）。
+          cat > app/build-variant-extras.gradle <<'GVEOF'
+          android {
+              splits {
+                  abi {
+                      enable true
+                      reset()
+                      include 'arm64-v8a', 'armeabi-v7a', 'x86_64'
+                      universalApk false
+                  }
+              }
+          }
+          GVEOF
+          echo 'apply from: "build-variant-extras.gradle"' >> app/build.gradle
+          ./gradlew assembleRelease --no-daemon
 
       - name: collect artifacts + size check（体积控制）
         run: |
           mkdir -p dist
           VER=0.1.0
-          for f in android/app/build/outputs/apk/release/*.apk; do
+          for f in android/app/build/outputs/apk/release/*arm64*.apk android/app/build/outputs/apk/release/*armeabi*.apk android/app/build/outputs/apk/release/*x86_64*.apk; do
+            [ -f "$f" ] || continue
             base=$(basename "$f" .apk)
             case "$base" in
               *arm64-v8a*) abi=arm64-v8a ;;
               *armeabi*) abi=armeabi-v7a ;;
               *x86_64*) abi=x86_64 ;;
-              *) abi=universal ;;
+              *) continue ;;
             esac
             TAG="${{ matrix.variant }}"
             cp "$f" "dist/TiernanMusicNext-${VER}-${TAG}-${abi}.apk"
           done
-          # 体积门禁：system 包 <= 25MB（保守体积控制），fully 包 <= 90MB
-          python3 - <<PYEOF
+          # 体积门禁（用户指令：体积控制）：
+          # system（系统 WebView）<= 25MB；fully（内置 GeckoView 单 ABI）<= 70MB
+          python3 - <<'PYEOF'
           import glob, os, sys
-          limits = {'system': 25 * 1024 * 1024, 'fully': 90 * 1024 * 1024}
           variant = "${{ matrix.variant }}"
+          limits = {'system': 25 * 1024 * 1024, 'fully': 70 * 1024 * 1024}
           ok = True
-          for f in glob.glob('dist/*.apk'):
+          files = glob.glob('dist/*.apk')
+          if not files:
+              print('ERROR: 无 ABI 拆分产物（splits 未生效）'); sys.exit(1)
+          for f in files:
               sz = os.path.getsize(f)
               limit = limits[variant]
               flag = 'OK' if sz <= limit else 'OVER'
