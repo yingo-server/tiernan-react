@@ -1,0 +1,157 @@
+name: android
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'android/**'
+      - 'capacitor.config.ts'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'attach APKs to a release'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # 两个变体：system = 系统 WebView（without-webview 包）
+        #           fully  = 自带 GeckoView 内核（fully 包）
+        variant: [system, fully]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+
+      - name: install
+        run: npm ci || npm install
+
+      - name: build web dist
+        run: npm run build
+
+      - name: capacitor add android (idempotent)
+        run: |
+          test -d android || npx cap add android
+          npx cap sync android
+
+      - name: apply geckoview variant (fully only)
+        if: matrix.variant == 'fully'
+        run: |
+          # fully：GeckoView 内核打进 APK。保守做法：
+          # 1) gradle 依赖加 org.mozilla.geckoview
+          # 2) MainActivity 改为装载 GeckoView 的变体（同 dist 资产）
+          # 3) UA 加 GeckoView 标记（gateway.ts 探测用）
+          GV=$(grep -A1 'geckoview' tool/geckoview-version.txt 2>/dev/null | tail -1 | tr -d ' ')
+          GV_VER="${GV:-130.0.20240906153548}"
+          python3 - <<PYEOF
+          import re, pathlib
+          g = pathlib.Path('android/app/build.gradle')
+          s = g.read_text()
+          if 'geckoview' not in s:
+              s = s.replace(
+                  'dependencies {',
+                  'dependencies {\n    implementation "org.mozilla.geckoview:geckoview:${GV_VER}"',
+              )
+          s = s.replace('${GV_VER}', "$GV_VER") if '$GV_VER' not in s else s
+          g.write_text(s)
+          PYEOF
+          # UA 标记（GeckoMainActivity 内设置）
+          mkdir -p android/app/src/main/java/com/tiernan/music/next
+          cat > android/app/src/main/java/com/tiernan/music/next/GeckoMainActivity.kt <<'KTEOF'
+          package com.tiernan.music.next
+
+          import android.os.Bundle
+          import org.mozilla.geckoview.GeckoRuntime
+          import org.mozilla.geckoview.GeckoSession
+          import org.mozilla.geckoview.GeckoView
+
+          /** fully 变体启动页：GeckoView 装载同一 dist（UA 带 GeckoView 标记）。 */
+          class GeckoMainActivity : android.app.Activity() {
+              private lateinit var session: GeckoSession
+              private lateinit var runtime: GeckoRuntime
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  runtime = GeckoRuntime.create(this)
+                  session = GeckoSession()
+                  session.settings.userAgentOverride =
+                      "Mozilla/5.0 GeckoView TiernanMusicNext-Fully"
+                  session.open(runtime)
+                  val view = GeckoView(this)
+                  view.setSession(session)
+                  setContentView(view)
+                  // Capacitor 产物由本地 http 服务器（嵌入 asset）提供；
+                  // 保守实现：加载 file:///android_asset/public/index.html
+                  session.loadUri("resource://android/assets/public/index.html")
+              }
+          }
+          KTEOF
+          echo "geckoview variant applied"
+
+      - name: build apk (release, split per abi)
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon -PversionName=0.1.0-${{ matrix.variant }}
+
+      - name: collect artifacts + size check（体积控制）
+        run: |
+          mkdir -p dist
+          VER=0.1.0
+          for f in android/app/build/outputs/apk/release/*.apk; do
+            base=$(basename "$f" .apk)
+            case "$base" in
+              *arm64-v8a*) abi=arm64-v8a ;;
+              *armeabi*) abi=armeabi-v7a ;;
+              *x86_64*) abi=x86_64 ;;
+              *) abi=universal ;;
+            esac
+            TAG="${{ matrix.variant }}"
+            cp "$f" "dist/TiernanMusicNext-${VER}-${TAG}-${abi}.apk"
+          done
+          # 体积门禁：system 包 <= 25MB（保守体积控制），fully 包 <= 90MB
+          python3 - <<PYEOF
+          import glob, os, sys
+          limits = {'system': 25 * 1024 * 1024, 'fully': 90 * 1024 * 1024}
+          variant = "${{ matrix.variant }}"
+          ok = True
+          for f in glob.glob('dist/*.apk'):
+              sz = os.path.getsize(f)
+              limit = limits[variant]
+              flag = 'OK' if sz <= limit else 'OVER'
+              if sz > limit: ok = False
+              print(f"{f} {sz/1024/1024:.1f}MB / limit {limit/1024/1024}MB {flag}")
+          sys.exit(0 if ok else 1)
+          PYEOF
+          ls -lh dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk-${{ matrix.variant }}
+          path: dist/*.apk
+
+  release:
+    needs: [apk]
+    if: github.event.inputs.release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: apk-system, path: rel }
+      - uses: actions/download-artifact@v4
+        with: { name: apk-fully, path: rel }
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.1.0
+          files: rel/*.apk
+          prerelease: true
