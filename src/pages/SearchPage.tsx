@@ -8,15 +8,19 @@ import TextField from '@mui/material/TextField';
 import List from '@mui/material/List';
 import ListItem from '@mui/material/ListItem';
 import ListItemText from '@mui/material/ListItemText';
+import ListItemButton from '@mui/material/ListItemButton';
+import Paper from '@mui/material/Paper';
+import CircularProgress from '@mui/material/CircularProgress';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import SearchIcon from '@mui/icons-material/Search';
 import ClearIcon from '@mui/icons-material/Clear';
 import { TnPageScaffold } from '../theme/PageScaffold';
-import { Space } from '../theme/layout';
+import { Radius, Size, Space } from '../theme/layout';
 import { request } from '../kugou/client';
 import { EP } from '../kugou/endpoints';
+import { useSearchSuggest } from '../hooks/useKugou';
 
 interface Hit {
   hash: string;
@@ -30,6 +34,15 @@ export function SearchPage() {
   const [state, setState] = useState<{ loading: boolean; error: string | null; hits: Hit[]; done: string }>({
     loading: false, error: null, hits: [], done: '',
   });
+  // 搜索建议：输入防抖 300ms（hook 内实现），选中即搜索
+  const suggest = useSearchSuggest(q);
+  const suggestions = suggest.data ?? [];
+  const showSuggest = q.trim().length > 0 && (suggest.loading || suggestions.length > 0);
+
+  const pickSuggest = (word: string) => {
+    setQ(word);
+    void search(word);
+  };
 
   const search = async (query: string) => {
     const kw = query.trim();
@@ -81,6 +94,33 @@ export function SearchPage() {
               搜索
             </Button>
           </Box>
+
+          {showSuggest && (
+            <Paper
+              variant="outlined"
+              sx={{ mt: Space.sm, borderRadius: Radius.md, overflow: 'hidden' }}
+            >
+              <List dense disablePadding>
+                {suggest.loading && suggestions.length === 0 && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: Space.sm, p: Space.md }}>
+                    <CircularProgress size={Size.avatarSm} />
+                    <Typography variant="body2" color="text.secondary">获取建议中…</Typography>
+                  </Box>
+                )}
+                {suggestions.map((item) => (
+                  <ListItem key={`${item.type}-${item.keyword}`} disablePadding>
+                    <ListItemButton onClick={() => pickSuggest(item.keyword)}>
+                      <ListItemText
+                        primary={item.keyword}
+                        secondary={item.type && item.type !== '综合' ? item.type : undefined}
+                        slotProps={{ primary: { noWrap: true } }}
+                      />
+                    </ListItemButton>
+                  </ListItem>
+                ))}
+              </List>
+            </Paper>
+          )}
 
           <Box sx={{ pt: Space.xl }}>
             {state.loading && (
