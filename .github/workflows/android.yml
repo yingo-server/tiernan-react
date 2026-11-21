@@ -92,7 +92,6 @@ jobs:
           package com.tiernan.music.next;
 
           import android.app.Activity;
-          import android.net.Uri;
           import android.os.Bundle;
           import org.mozilla.geckoview.GeckoRuntime;
           import org.mozilla.geckoview.GeckoSession;
@@ -114,8 +113,9 @@ jobs:
                   GeckoView view = new GeckoView(this);
                   view.setSession(session);
                   setContentView(view);
-                  // GeckoView 135 起 load(String) 已移除，改用 loadUri(Uri)。
-                  session.loadUri(Uri.parse("resource://android/assets/public/index.html"));
+                  // GeckoView 135 API（由 javac 反推）：load(Loader) 与
+                  // loadUri(String) —— 用 loadUri(String)。
+                  session.loadUri("resource://android/assets/public/index.html");
               }
           }
           KTEOF
