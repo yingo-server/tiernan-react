@@ -137,6 +137,14 @@ jobs:
           chmod +x gradlew
           cat > app/build-variant-extras.gradle <<'GVEOF'
           android {
+              buildTypes {
+                  release {
+                      // 压缩加强（用户指令）：R8 full + 资源收缩 + 深度优化
+                      minifyEnabled true
+                      shrinkResources true
+                      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
+                  }
+              }
               splits {
                   abi {
                       enable true
