@@ -112,6 +112,10 @@ jobs:
               }
           }
           KTEOF
+          # 4) manifest：fully 变体的 launcher 必须是 GeckoMainActivity
+          #    （否则启动的还是 Capacitor MainActivity → 走系统 WebView，
+          #     GeckoView 只是死重量）。逻辑放在独立脚本（避免 YAML 里嵌复杂脚本）。
+          python3 tool/apply_gecko_manifest.py android/app/src/main/AndroidManifest.xml
           echo "geckoview variant applied"
 
       - name: build apk (release, abi splits + size guard)
