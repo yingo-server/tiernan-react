@@ -85,30 +85,35 @@ jobs:
           print('geckoview dep added:', gv)
           PYEOF
           # 3) GeckoMainActivity（UA 带 GeckoView 标记，gateway.ts 探测用）
+          #    用 Java 而非 Kotlin：Capacitor 模板只配置了 Java 源集与 javac 任务
+          #    （未应用 kotlin-android 插件）—— .kt 源不会被编译进 dex。
           mkdir -p android/app/src/main/java/com/tiernan/music/next
-          cat > android/app/src/main/java/com/tiernan/music/next/GeckoMainActivity.kt <<'KTEOF'
-          package com.tiernan.music.next
+          cat > android/app/src/main/java/com/tiernan/music/next/GeckoMainActivity.java <<'KTEOF'
+          package com.tiernan.music.next;
 
-          import android.os.Bundle
-          import org.mozilla.geckoview.GeckoRuntime
-          import org.mozilla.geckoview.GeckoSession
-          import org.mozilla.geckoview.GeckoView
+          import android.app.Activity;
+          import android.os.Bundle;
+          import org.mozilla.geckoview.GeckoRuntime;
+          import org.mozilla.geckoview.GeckoSession;
+          import org.mozilla.geckoview.GeckoView;
 
           /** fully 变体启动页：GeckoView 装载同一 dist（UA 带 GeckoView 标记）。 */
-          class GeckoMainActivity : android.app.Activity() {
-              private lateinit var session: GeckoSession
-              private lateinit var runtime: GeckoRuntime
-              override fun onCreate(savedInstanceState: Bundle?) {
-                  super.onCreate(savedInstanceState)
-                  runtime = GeckoRuntime.create(this)
-                  session = GeckoSession()
-                  session.settings.userAgentOverride =
-                      "Mozilla/5.0 GeckoView TiernanMusicNext-Fully"
-                  session.open(runtime)
-                  val view = GeckoView(this)
-                  view.setSession(session)
-                  setContentView(view)
-                  session.loadUri("resource://android/assets/public/index.html")
+          public class GeckoMainActivity extends Activity {
+              private GeckoSession session;
+              private GeckoRuntime runtime;
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  runtime = GeckoRuntime.create(this);
+                  session = new GeckoSession();
+                  session.getSettings().setUserAgentOverride(
+                      "Mozilla/5.0 GeckoView TiernanMusicNext-Fully");
+                  session.open(runtime);
+                  GeckoView view = new GeckoView(this);
+                  view.setSession(session);
+                  setContentView(view);
+                  session.load("resource://android/assets/public/index.html");
               }
           }
           KTEOF
@@ -138,6 +143,19 @@ jobs:
           GVEOF
           echo 'apply from: "build-variant-extras.gradle"' >> app/build.gradle
           ./gradlew assembleRelease --no-daemon
+          # 自检：fully 变体必须真把 GeckoMainActivity 编进 dex
+          # （此前 .kt 源因模板未配 kotlin 插件而未被编译 → 内核成死重量）
+          if [ "${{ matrix.variant }}" = "fully" ]; then
+            APK=$(ls app/build/outputs/apk/release/*arm64*.apk | head -1)
+            rm -rf /tmp/dexchk && mkdir -p /tmp/dexchk
+            unzip -o -q "$APK" 'classes*.dex' -d /tmp/dexchk || true
+            if grep -qa "GeckoMainActivity" /tmp/dexchk/classes*.dex; then
+              echo "GECKO-DEX-CHECK: GeckoMainActivity present ✅"
+            else
+              echo "::error::GeckoMainActivity 未编入 dex（GeckoView 内核将不生效）"
+              exit 1
+            fi
+          fi
 
       - name: collect artifacts + size check（体积控制）
         run: |
