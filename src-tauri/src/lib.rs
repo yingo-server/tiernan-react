@@ -69,5 +69,6 @@ pub fn run() {
 }
 
 // Manager trait 引用占位：保持常用预导入，避免编辑器报 unused import 反复调整。
+// Tauri 2.12 的 Manager 需要 Runtime 泛型参数（Manager<R: Runtime>）。
 #[allow(unused)]
-fn _manager_bound<T: Manager>() {}
+fn _manager_bound<R: tauri::Runtime, T: Manager<R>>() {}
