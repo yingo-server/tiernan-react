@@ -13,6 +13,11 @@ on:
 permissions:
   contents: write
 
+# 并发控制：同分支新推送直接取消旧 run（省排队与资源）
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -24,9 +29,17 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: install
-        run: npm ci || npm install
+      # 依赖缓存命中时 install 18s → ~3s
+      - name: cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-${{ hashFiles('package-lock.json') }}
 
+      - name: install
+        run: npm ci --prefer-offline --no-audit || npm install --prefer-offline --no-audit
+
+      # typecheck 与 md5 冒烟并行化收益小（各 1-3s），保持串行
       - name: typecheck
         run: npx tsc -b --noEmit
 
@@ -44,11 +57,17 @@ jobs:
         if: always()
         run: npx tsx src/kugou/md5.smoke.ts
 
+      # Vite 构建缓存（transform 缓存）
+      - name: cache vite
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.vite
+          key: vite-${{ hashFiles('src/**/*.tsx', 'src/**/*.ts', 'vite.config.ts') }}
+
       - name: build
         run: npm run build
 
-      - name: upload dist
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/
@@ -62,13 +81,9 @@ jobs:
         with:
           name: dist
           path: dist
-      - name: prepare gh-pages
-        run: |
-          mkdir -p pub
-          cp -r dist/* pub/
       - name: deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: pub
+          publish_dir: dist
           force_orphan: true

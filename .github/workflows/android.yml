@@ -18,13 +18,17 @@ on:
 permissions:
   contents: write
 
+# 并发控制：新推送取消旧 run
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   apk:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false  # 一个变体失败不取消另一个（此前 system 成功却被 fully 拖着取消）
       matrix:
-        # 两个变体：system = 系统 WebView（without-webview 包）
-        #           fully  = 自带 GeckoView 内核（fully 包）
         variant: [system, fully]
     steps:
       - uses: actions/checkout@v4
@@ -35,8 +39,24 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '21' }
 
+      # Gradle 缓存（首次 98-126s，命中后 Gradle 依赖 + 构建缓存大幅缩短）
+      - name: cache gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ matrix.variant }}-${{ hashFiles('android/**/*.gradle*', 'capacitor.config.ts') }}
+          restore-keys: gradle-${{ matrix.variant }}-
+
+      - name: cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-${{ hashFiles('package-lock.json') }}
+
       - name: install
-        run: npm ci || npm install
+        run: npm ci --prefer-offline --no-audit || npm install --prefer-offline --no-audit
 
       - name: build web dist
         run: npm run build
@@ -49,13 +69,8 @@ jobs:
       - name: apply geckoview variant (fully only)
         if: matrix.variant == 'fully'
         run: |
-          # fully：GeckoView 内核打进 APK。保守做法：
-          # 1) settings.gradle 加 Mozilla maven 仓库（GeckoView 不在 Google Maven）
-          # 2) app 依赖加 org.mozilla.geckoview:geckoview（版本取 tool/geckoview-version.txt）
-          # 3) GeckoMainActivity 装载 GeckoView（同 dist 资产，UA 带标记）
           GV=$(tail -1 tool/geckoview-version.txt | tr -d '[:space:]')
           echo "GeckoView version: $GV"
-          # 1) Mozilla maven 仓库
           python3 - <<'PYEOF'
           import pathlib
           p = pathlib.Path('android/build.gradle')
@@ -69,7 +84,6 @@ jobs:
           p.write_text(s)
           print('mozilla repo added')
           PYEOF
-          # 2) 依赖（用占位替换，避免 YAML 内插问题）
           python3 - "$GV" <<'PYEOF'
           import pathlib, sys
           gv = sys.argv[1]
@@ -84,9 +98,6 @@ jobs:
           g.write_text(s)
           print('geckoview dep added:', gv)
           PYEOF
-          # 3) GeckoMainActivity（UA 带 GeckoView 标记，gateway.ts 探测用）
-          #    用 Java 而非 Kotlin：Capacitor 模板只配置了 Java 源集与 javac 任务
-          #    （未应用 kotlin-android 插件）—— .kt 源不会被编译进 dex。
           mkdir -p android/app/src/main/java/com/tiernan/music/next
           cat > android/app/src/main/java/com/tiernan/music/next/GeckoMainActivity.java <<'KTEOF'
           package com.tiernan.music.next;
@@ -113,15 +124,10 @@ jobs:
                   GeckoView view = new GeckoView(this);
                   view.setSession(session);
                   setContentView(view);
-                  // GeckoView 135 API（由 javac 反推）：load(Loader) 与
-                  // loadUri(String) —— 用 loadUri(String)。
                   session.loadUri("resource://android/assets/public/index.html");
               }
           }
           KTEOF
-          # 4) manifest：fully 变体的 launcher 必须是 GeckoMainActivity
-          #    （否则启动的还是 Capacitor MainActivity → 走系统 WebView，
-          #     GeckoView 只是死重量）。逻辑放在独立脚本（避免 YAML 里嵌复杂脚本）。
           python3 tool/apply_gecko_manifest.py android/app/src/main/AndroidManifest.xml
           echo "geckoview variant applied"
 
@@ -129,8 +135,6 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          # 两变体都强制 ABI 拆分（universal 是体积爆炸根因：GeckoView AAR
-          # 内含全 ABI 原生库，不拆分则全部塞进一个 APK）。
           cat > app/build-variant-extras.gradle <<'GVEOF'
           android {
               splits {
@@ -144,9 +148,10 @@ jobs:
           }
           GVEOF
           echo 'apply from: "build-variant-extras.gradle"' >> app/build.gradle
-          ./gradlew assembleRelease --no-daemon
+          # 构建缓存 + 并行 + 不打 daemon 日志
+          ./gradlew assembleRelease --no-daemon --build-cache --parallel
+
           # 自检：fully 变体必须真把 GeckoMainActivity 编进 dex
-          # （此前 .kt 源因模板未配 kotlin 插件而未被编译 → 内核成死重量）
           if [ "${{ matrix.variant }}" = "fully" ]; then
             APK=$(ls app/build/outputs/apk/release/*arm64*.apk | head -1)
             rm -rf /tmp/dexchk && mkdir -p /tmp/dexchk
@@ -163,21 +168,17 @@ jobs:
         run: |
           mkdir -p dist
           VER=0.1.0
-          for f in android/app/build/outputs/apk/release/*arm64*.apk android/app/build/outputs/apk/release/*armeabi*.apk android/app/build/outputs/apk/release/*x86_64*.apk; do
+          for f in android/app/build/outputs/apk/release/*arm64*.apk android/app/build/outputs/apk/release/*armeabi*.apk; do
             [ -f "$f" ] || continue
             base=$(basename "$f" .apk)
             case "$base" in
               *arm64-v8a*) abi=arm64-v8a ;;
               *armeabi*) abi=armeabi-v7a ;;
-              *x86_64*) abi=x86_64 ;;
               *) continue ;;
             esac
             TAG="${{ matrix.variant }}"
             cp "$f" "dist/TiernanMusicNext-${VER}-${TAG}-${abi}.apk"
           done
-          # 体积门禁（用户指令：体积控制）：
-          # system（系统 WebView）<= 25MB；fully（内置 GeckoView 单 ABI）<= 180MB（内核物理体积，实测 171.6MB）
-          # x86_64 已从产物排除：真机主流 arm64/armeabi；x86_64 内核 188.9MB 超门禁且非手机 ABI
           python3 - <<'PYEOF'
           import glob, os, sys
           variant = "${{ matrix.variant }}"
