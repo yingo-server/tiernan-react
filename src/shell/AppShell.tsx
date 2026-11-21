@@ -16,14 +16,19 @@ import BottomNavigationAction from '@mui/material/BottomNavigationAction';
 import HomeIcon from '@mui/icons-material/Home';
 import SearchIcon from '@mui/icons-material/Search';
 import LibraryMusicIcon from '@mui/icons-material/LibraryMusic';
+import GroupsIcon from '@mui/icons-material/Groups';
 import SettingsIcon from '@mui/icons-material/Settings';
+import Snackbar from '@mui/material/Snackbar';
+import Alert from '@mui/material/Alert';
 import { Breakpoint, Size } from '../theme/layout';
 import { MiniPlayerBar } from './MiniPlayerBar';
+import { useToastStore } from '../ui/toastStore';
 
 const TABS = [
   { path: '/', label: '首页', icon: <HomeIcon /> },
   { path: '/search', label: '搜索', icon: <SearchIcon /> },
   { path: '/library', label: '曲库', icon: <LibraryMusicIcon /> },
+  { path: '/artists', label: '歌手', icon: <GroupsIcon /> },
   { path: '/settings', label: '设置', icon: <SettingsIcon /> },
 ] as const;
 
@@ -31,6 +36,9 @@ export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileOpen] = useState(false);
+  const toastMessage = useToastStore((s) => s.message);
+  const toastSeverity = useToastStore((s) => s.severity);
+  const hideToast = useToastStore((s) => s.hide);
   // 宽度判定：window.innerWidth + resize 监听（MUI useMediaQuery 亦可，先用最简）
   const isExpanded =
     typeof window !== 'undefined' &&
@@ -59,9 +67,9 @@ export function AppShell() {
         <Drawer
           variant="permanent"
           sx={{
-            width: 240,
+            width: Size.drawerWidth,
             flexShrink: 0,
-            '& .MuiDrawer-paper': { width: 240, boxSizing: 'border-box' },
+            '& .MuiDrawer-paper': { width: Size.drawerWidth, boxSizing: 'border-box' },
           }}
         >
           {navList}
@@ -87,6 +95,17 @@ export function AppShell() {
       </Box>
       {/* 移动临时抽屉（预留） */}
       <Drawer open={mobileOpen} onClose={() => undefined} />
+      {/* 全局轻提示宿主（播放器等模块用 toastStore 触发） */}
+      <Snackbar
+        open={!!toastMessage}
+        autoHideDuration={4000}
+        onClose={hideToast}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity={toastSeverity} onClose={hideToast} variant="filled">
+          {toastMessage}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

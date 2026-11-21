@@ -10,6 +10,7 @@ import CardMedia from '@mui/material/CardMedia';
 import Typography from '@mui/material/Typography';
 import List from '@mui/material/List';
 import ListItem from '@mui/material/ListItem';
+import ListItemButton from '@mui/material/ListItemButton';
 import ListItemAvatar from '@mui/material/ListItemAvatar';
 import ListItemText from '@mui/material/ListItemText';
 import Avatar from '@mui/material/Avatar';
@@ -20,11 +21,13 @@ import { useParams } from 'react-router-dom';
 import { TnPageScaffold } from '../theme/PageScaffold';
 import { Radius, Size, Space } from '../theme/layout';
 import { usePagedSongs, useRankBrief, fetchRankTracks, type SongBrief } from '../hooks/useKugou';
+import { usePlayerStore } from '../player/PlayerStore';
 
 export function RankDetailPage() {
   const params = useParams();
   const id = params.id ?? '';
   const brief = useRankBrief(id);
+  const playQueue = usePlayerStore((s) => s.playQueue);
   const paged = usePagedSongs((page, pageSize) => fetchRankTracks(id, page, pageSize), id, 30);
 
   const sentinel = useRef<HTMLDivElement | null>(null);
@@ -91,6 +94,7 @@ export function RankDetailPage() {
             <List>
               {paged.songs.map((song: SongBrief, index: number) => (
                 <ListItem key={`${song.hash}-${index}`} disablePadding>
+                  <ListItemButton onClick={() => playQueue(paged.songs, index)}>
                   <ListItemAvatar sx={{ minWidth: Size.avatarLg }}>
                     <Avatar variant="rounded" sx={{ width: Size.avatarSm, height: Size.avatarSm }} src={song.cover || undefined}>
                       <MusicNoteIcon />
@@ -101,6 +105,7 @@ export function RankDetailPage() {
                     secondary={song.singer}
                     slotProps={{ primary: { noWrap: true }, secondary: { noWrap: true } }}
                   />
+                  </ListItemButton>
                 </ListItem>
               ))}
             </List>

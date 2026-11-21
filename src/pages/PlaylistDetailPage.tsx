@@ -11,6 +11,7 @@ import CardMedia from '@mui/material/CardMedia';
 import Typography from '@mui/material/Typography';
 import List from '@mui/material/List';
 import ListItem from '@mui/material/ListItem';
+import ListItemButton from '@mui/material/ListItemButton';
 import ListItemAvatar from '@mui/material/ListItemAvatar';
 import ListItemText from '@mui/material/ListItemText';
 import Avatar from '@mui/material/Avatar';
@@ -26,11 +27,13 @@ import {
   fetchPlaylistTracks,
   type SongBrief,
 } from '../hooks/useKugou';
+import { usePlayerStore } from '../player/PlayerStore';
 
 export function PlaylistDetailPage() {
   const params = useParams();
   const id = params.id ?? '';
   const detail = usePlaylistDetail(id);
+  const playQueue = usePlayerStore((s) => s.playQueue);
   // 取曲目优先用详情返回的数值 specialid（global_collection_id 会被上游拒）
   const tracksId = detail.data?.specialId || id;
   const paged = usePagedSongs(
@@ -113,6 +116,7 @@ export function PlaylistDetailPage() {
             <List>
               {paged.songs.map((song: SongBrief, index: number) => (
                 <ListItem key={`${song.hash}-${index}`} disablePadding>
+                  <ListItemButton onClick={() => playQueue(paged.songs, index)}>
                   <ListItemAvatar sx={{ minWidth: Size.avatarLg }}>
                     <Avatar variant="rounded" sx={{ width: Size.avatarSm, height: Size.avatarSm }} src={song.cover || undefined}>
                       <MusicNoteIcon />
@@ -123,6 +127,7 @@ export function PlaylistDetailPage() {
                     secondary={song.singer}
                     slotProps={{ primary: { noWrap: true }, secondary: { noWrap: true } }}
                   />
+                  </ListItemButton>
                 </ListItem>
               ))}
             </List>

@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { TnPageScaffold } from '../theme/PageScaffold';
 import { Size, Space } from '../theme/layout';
 import { useDailyRecommend, usePlaylistRecommend, useRankList, type SongBrief, type PlaylistBrief, type RankBrief } from '../hooks/useKugou';
+import { usePlayerStore } from '../player/PlayerStore';
 
 export function HomePage() {
   const navigate = useNavigate();
@@ -73,6 +74,7 @@ function StateView(props: {
 
 function DailySection(props: { onMore: () => void }) {
   const nav = useNavigate();
+  const playQueue = usePlayerStore((s) => s.playQueue);
   const st = useDailyRecommend();
   const isEmpty = !st.data || st.data.length === 0;
   return (
@@ -87,8 +89,12 @@ function DailySection(props: { onMore: () => void }) {
         emptyAction={{ label: '去登录', onClick: () => nav('/settings') }}
         children={() => (
           <Box sx={{ display: 'flex', gap: Space.md, overflowX: 'auto', pb: Space.sm }}>
-            {(st.data as SongBrief[]).map((s) => (
-              <Card key={s.hash} sx={{ width: Size.songCard, flexShrink: 0 }}>
+            {(st.data as SongBrief[]).map((s, index) => (
+              <Card
+                key={s.hash}
+                sx={{ width: Size.songCard, flexShrink: 0, cursor: 'pointer' }}
+                onClick={() => playQueue(st.data as SongBrief[], index)}
+              >
                 <CardMedia component="div" sx={{ aspectRatio: '1', backgroundColor: 'action.hover' }}
                   image={s.cover || undefined} />
                 <CardContent sx={{ p: Space.md, '&:last-child': { pb: Space.md } }}>

@@ -10,6 +10,10 @@ import { LibraryPage } from './pages/LibraryPage';
 import { PlaylistDetailPage } from './pages/PlaylistDetailPage';
 import { RankDetailPage } from './pages/RankDetailPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { LyricsPage } from './pages/LyricsPage';
+import { ArtistPage } from './pages/ArtistPage';
+import { ArtistsPage } from './pages/ArtistsPage';
+import { AlbumPage } from './pages/AlbumPage';
 
 const THEME_KEY = 'ui.themeMode';
 
@@ -55,6 +59,10 @@ export default function App() {
             <Route path="/library" element={<LibraryPage />} />
             <Route path="/playlist/:id" element={<PlaylistDetailPage />} />
             <Route path="/rank/:id" element={<RankDetailPage />} />
+            <Route path="/lyrics/:hash" element={<LyricsPage />} />
+            <Route path="/artists" element={<ArtistsPage />} />
+            <Route path="/artist/:id" element={<ArtistPage />} />
+            <Route path="/album/:id" element={<AlbumPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

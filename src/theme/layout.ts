@@ -76,6 +76,14 @@ export const Size = {
   qrCode: 240,
   /** 桌面标题栏按钮高。 */
   titlebarButton: 36,
+  /** 歌词行时间戳列宽。 */
+  timeLabel: 56,
+  /** 歌手页头像直径。 */
+  artistAvatar: 96,
+  /** 桌面侧栏宽（Drawer permanent）。 */
+  drawerWidth: 240,
+  /** 迷你播放条音量滑杆宽。 */
+  volumeSlider: 96,
 } as const;
 
 /** 页面骨架（唯一事实源的一部分）：官方 AppBar + 统一结构，页面不得自带主题配置。 */

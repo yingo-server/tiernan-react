@@ -69,16 +69,19 @@ export async function request<T = Record<string, unknown>>(
   const bodyStr = opts.rawBody ?? (method === 'POST' ? JSON.stringify(opts.body ?? {}) : '');
 
   if (!ep.clearDefaultParams) {
-    p.dfid = session.dfid;
-    p.uuid = '-';
-    p.appid = APPID;
-    p.clientver = CLIENTVER;
+    // putIfAbsent 语义（逐字对齐 Flutter 仓 kugou_client.dart _requestRaw）：
+    // 端点显式传入的同名参数优先（如 play_url v5 的 clientver=11430、
+    // 歌手域显式带的 dfid/mid/uuid），未被显式指定才注入默认值。
+    if (p.dfid === undefined) p.dfid = session.dfid;
+    if (p.uuid === undefined) p.uuid = '-';
+    if (p.appid === undefined) p.appid = APPID;
+    if (p.clientver === undefined) p.clientver = CLIENTVER;
     // 实测：srcappid 参与签名会让搜索/cloudlist 等端点返回 20006；默认不注入
-    if (ep.includeSrcappid) p.srcappid = SRCAPPID;
-    p.mid = session.mid || '0';
-    p.clienttime = Math.floor(Date.now() / 1000);
-    if (session.token) p.token = session.token;
-    if (session.userid) p.userid = session.userid;
+    if (ep.includeSrcappid && p.srcappid === undefined) p.srcappid = SRCAPPID;
+    if (p.mid === undefined) p.mid = session.mid || '0';
+    if (p.clienttime === undefined) p.clienttime = Math.floor(Date.now() / 1000);
+    if (session.token && p.token === undefined) p.token = session.token;
+    if (session.userid && p.userid === undefined) p.userid = session.userid;
   }
 
   if (ep.encryptKey && p.hash != null) {
@@ -132,9 +135,14 @@ export async function request<T = Record<string, unknown>>(
     throw new KugouApiError(-1, `invalid json (${ep.id})`);
   }
   const code = Number(json.status ?? json.error_code ?? json.err_code ?? 0);
-  if (code !== 0 && code !== 1) {
-    // 20028 = 权限不足（VIP 端点未登录）；20006 = 签名/参数错
-    throw new KugouApiError(code, String(json.error ?? json.hint ?? 'api error'));
+  // ignoreStatus：端点自定义成功语义（播放地址 status 1/0/2、歌词 status=200），
+  // 由调用层按业务字段判定（出处：docs/API_FIELDS_TRUTH.md §A3-1 / §A3-2）。
+  if (!ep.ignoreStatus) {
+    const ok = ep.successCodes ? ep.successCodes.includes(code) : code === 0 || code === 1;
+    if (!ok) {
+      // 20028 = 权限不足（VIP 端点未登录）；20006 = 签名/参数错
+      throw new KugouApiError(code, String(json.error ?? json.hint ?? 'api error'));
+    }
   }
   return json as T;
 }
