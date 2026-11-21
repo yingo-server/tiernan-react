@@ -5,7 +5,7 @@
  * - Tauri（桌面）：invoke('native_fetch')（Rust reqwest，绕 CORS）
  * - 浏览器/PWA：fetch（受 CORS，仅部分公开端点可用）
  */
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 
 export type PlatformKind = 'web' | 'capacitor' | 'tauri';
 
@@ -37,7 +37,6 @@ export function registerTauriFetch(fn: (url: string, init: DirectFetchInit) => P
 }
 
 async function capacitorFetch(url: string, init: DirectFetchInit): Promise<DirectFetchResult> {
-  const { CapacitorHttp } = await import('@capacitor/core');
   const res = await CapacitorHttp.request({
     url,
     method: (init.method ?? 'GET') as 'GET' | 'POST',
