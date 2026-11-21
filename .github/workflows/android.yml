@@ -182,7 +182,7 @@ jobs:
       - name: collect artifacts + size check（体积控制）
         run: |
           mkdir -p dist
-          VER=0.1.0
+          VER=0.1.1
           for f in android/app/build/outputs/apk/release/*arm64*.apk android/app/build/outputs/apk/release/*armeabi*.apk; do
             [ -f "$f" ] || continue
             base=$(basename "$f" .apk)
@@ -228,6 +228,6 @@ jobs:
         with: { name: apk-fully, path: rel }
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.1.0
+          tag_name: v0.1.1
           files: rel/*.apk
           prerelease: true
