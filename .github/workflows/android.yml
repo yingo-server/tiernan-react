@@ -153,7 +153,7 @@ jobs:
           done
           # 体积门禁（用户指令：体积控制）：
           # system（系统 WebView）<= 25MB；fully（内置 GeckoView 单 ABI）<= 180MB（内核物理体积，实测 171.6MB）
-# x86_64 已从产物排除：真机主流 arm64/armeabi；x86_64 内核 188.9MB 超门禁且非手机 ABI
+          # x86_64 已从产物排除：真机主流 arm64/armeabi；x86_64 内核 188.9MB 超门禁且非手机 ABI
           python3 - <<'PYEOF'
           import glob, os, sys
           variant = "${{ matrix.variant }}"
