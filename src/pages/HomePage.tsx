@@ -107,6 +107,7 @@ function DailySection(props: { onMore: () => void }) {
 }
 
 function PlaylistSection() {
+  const nav = useNavigate();
   const st = usePlaylistRecommend();
   return (
     <Section title="推荐歌单">
@@ -121,7 +122,10 @@ function PlaylistSection() {
           <Grid container spacing={Space.md}>
             {(st.data as PlaylistBrief[]).map((p) => (
               <Grid key={p.id} size={{ xs: 6, md: 4, lg: 3 }}>
-                <Card sx={{ minWidth: Size.playlistCardMin }}>
+                <Card
+                  sx={{ minWidth: Size.playlistCardMin, cursor: 'pointer' }}
+                  onClick={() => nav(`/playlist/${p.id}`)}
+                >
                   <CardMedia component="div" sx={{ aspectRatio: '1', backgroundColor: 'action.hover' }}
                     image={p.cover || undefined} />
                   <CardContent sx={{ p: Space.md, '&:last-child': { pb: Space.md } }}>
@@ -138,6 +142,7 @@ function PlaylistSection() {
 }
 
 function RankSection() {
+  const nav = useNavigate();
   const st = useRankList();
   return (
     <Section title="排行榜">
@@ -151,7 +156,11 @@ function RankSection() {
         children={() => (
           <Box sx={{ display: 'flex', gap: Space.md, overflowX: 'auto', pb: Space.sm }}>
             {(st.data as RankBrief[]).map((r) => (
-              <Card key={r.id} sx={{ width: Size.songCard * 1.25, flexShrink: 0, p: Space.md }}>
+              <Card
+                key={r.id}
+                sx={{ width: Size.songCard * 1.25, flexShrink: 0, p: Space.md, cursor: 'pointer' }}
+                onClick={() => nav(`/rank/${r.id}`)}
+              >
                 <Typography variant="body2" noWrap>{r.name || '榜单'}</Typography>
                 <Typography variant="caption" color="text.secondary" component="span" sx={{ display: 'block', pt: Space.sm }}>
                   {r.updateTime || '每周更新'}
