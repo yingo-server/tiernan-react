@@ -13,8 +13,10 @@ import ListItem from '@mui/material/ListItem';
 import { TnPageScaffold } from '../theme/PageScaffold';
 import { Size, Space } from '../theme/layout';
 import { useRankList, usePlaylistRecommend, type RankBrief, type PlaylistBrief } from '../hooks/useKugou';
+import { useNavigate } from 'react-router-dom';
 
 export function LibraryPage() {
+  const nav = useNavigate();
   const ranks = useRankList();
   const playlists = usePlaylistRecommend();
 
@@ -37,7 +39,11 @@ export function LibraryPage() {
             {!ranks.loading && !ranks.error && (ranks.data as RankBrief[])?.length > 0 && (
               <List>
                 {(ranks.data as RankBrief[]).map((r) => (
-                  <ListItem key={r.id}>
+                  <ListItem
+                    key={r.id}
+                    onClick={() => nav(`/rank/${r.id}`)}
+                    sx={{ cursor: 'pointer' }}
+                  >
                     <Typography variant="body2" sx={{ flexGrow: 1 }} noWrap>{r.name}</Typography>
                     <Typography variant="caption" color="text.secondary">{r.updateTime}</Typography>
                   </ListItem>
@@ -61,7 +67,10 @@ export function LibraryPage() {
               <Grid container spacing={Space.md}>
                 {(playlists.data as PlaylistBrief[]).map((p) => (
                   <Grid key={p.id} size={{ xs: 6, md: 4, lg: 3 }}>
-                    <Card sx={{ minWidth: Size.playlistCardMin }}>
+                    <Card
+                      sx={{ minWidth: Size.playlistCardMin, cursor: 'pointer' }}
+                      onClick={() => nav(`/playlist/${p.id}`)}
+                    >
                       <CardMedia component="div" sx={{ aspectRatio: '1', backgroundColor: 'action.hover' }} image={p.cover || undefined} />
                       <CardContent sx={{ p: Space.md, '&:last-child': { pb: Space.md } }}>
                         <Typography variant="body2" noWrap>{p.name}</Typography>
