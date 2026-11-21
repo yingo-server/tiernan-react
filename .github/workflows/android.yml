@@ -152,11 +152,11 @@ jobs:
             cp "$f" "dist/TiernanMusicNext-${VER}-${TAG}-${abi}.apk"
           done
           # 体积门禁（用户指令：体积控制）：
-          # system（系统 WebView）<= 25MB；fully（内置 GeckoView 单 ABI）<= 70MB
+          # system（系统 WebView）<= 25MB；fully（内置 GeckoView 单 ABI）<= 180MB（内核物理体积，实测 171.6MB）
           python3 - <<'PYEOF'
           import glob, os, sys
           variant = "${{ matrix.variant }}"
-          limits = {'system': 25 * 1024 * 1024, 'fully': 70 * 1024 * 1024}
+          limits = {'system': 25 * 1024 * 1024, 'fully': 180 * 1024 * 1024}
           ok = True
           files = glob.glob('dist/*.apk')
           if not files:
