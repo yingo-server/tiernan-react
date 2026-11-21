@@ -7,6 +7,8 @@ import { AppShell } from './shell/AppShell';
 import { HomePage } from './pages/HomePage';
 import { SearchPage } from './pages/SearchPage';
 import { LibraryPage } from './pages/LibraryPage';
+import { PlaylistDetailPage } from './pages/PlaylistDetailPage';
+import { RankDetailPage } from './pages/RankDetailPage';
 import { SettingsPage } from './pages/SettingsPage';
 
 const THEME_KEY = 'ui.themeMode';
@@ -51,6 +53,8 @@ export default function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/library" element={<LibraryPage />} />
+            <Route path="/playlist/:id" element={<PlaylistDetailPage />} />
+            <Route path="/rank/:id" element={<RankDetailPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
