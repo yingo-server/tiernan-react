@@ -1,42 +1,80 @@
 /**
- * 平台能力网关（WebView 环境探测 + 直连桥）。
+ * 平台能力网关：三环境统一出口 platformDirectFetch()。
  *
- * 浏览器/PWA：fetch 直连酷狗（CORS 是硬坎，仅部分公开端点可用）
- * Capacitor：原生层代理（CapacitorHttp 绕过 CORS，system 与 fully 变体同享）
+ * - Capacitor（Android APK）：CapacitorHttp 原生层代理（绕 CORS）
+ * - Tauri（桌面）：invoke('native_fetch')（Rust reqwest，绕 CORS）
+ * - 浏览器/PWA：fetch（受 CORS，仅部分公开端点可用）
  */
 import { Capacitor } from '@capacitor/core';
 
-export type PlatformKind = 'web' | 'capacitor-system' | 'capacitor-gecko';
+export type PlatformKind = 'web' | 'capacitor' | 'tauri';
 
 export function platformKind(): PlatformKind {
-  if (!Capacitor.isNativePlatform()) return 'web';
-  // Gecko 变体的 UA 由 GeckoMainActivity 设置标记
-  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
-  return ua.includes('GeckoView') ? 'capacitor-gecko' : 'capacitor-system';
+  if (typeof window !== 'undefined' && (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__) {
+    return 'tauri';
+  }
+  if (Capacitor.isNativePlatform()) return 'capacitor';
+  return 'web';
 }
 
-/** 直连请求入口：native 用 CapacitorHttp（绕 CORS），web 用 fetch（受 CORS）。 */
-export async function directFetch(
-  url: string,
-  init: { method?: string; headers?: Record<string, string>; body?: string } = {},
-): Promise<{ status: number; body: string }> {
-  if (Capacitor.isNativePlatform()) {
-    const { CapacitorHttp } = await import('@capacitor/core');
-    const res = await CapacitorHttp.request({
-      url,
-      method: (init.method ?? 'GET') as 'GET' | 'POST',
-      headers: init.headers ?? {},
-      data: init.body,
-      // 酷狗网关需要跟随重定向
-      disableRedirects: false,
-    });
-    const body = typeof res.data === 'string' ? res.data : JSON.stringify(res.data);
-    return { status: res.status, body };
-  }
+export interface DirectFetchInit {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string;
+}
+
+export interface DirectFetchResult {
+  status: number;
+  body: string;
+}
+
+/** Tauri 桥（由 src/platform/tauri.ts 提供，Tauri 环境下动态加载）。 */
+let tauriFetchImpl: ((url: string, init: DirectFetchInit) => Promise<DirectFetchResult>) | null = null;
+
+/** Tauri 环境注册实现（由 tauri.ts 在检测到 Tauri 时调用）。 */
+export function registerTauriFetch(fn: (url: string, init: DirectFetchInit) => Promise<DirectFetchResult>) {
+  tauriFetchImpl = fn;
+}
+
+async function capacitorFetch(url: string, init: DirectFetchInit): Promise<DirectFetchResult> {
+  const { CapacitorHttp } = await import('@capacitor/core');
+  const res = await CapacitorHttp.request({
+    url,
+    method: (init.method ?? 'GET') as 'GET' | 'POST',
+    headers: init.headers ?? {},
+    data: init.body,
+  });
+  const body = typeof res.data === 'string' ? res.data : JSON.stringify(res.data);
+  return { status: res.status, body };
+}
+
+async function webFetch(url: string, init: DirectFetchInit): Promise<DirectFetchResult> {
   const res = await fetch(url, {
     method: init.method ?? 'GET',
     headers: init.headers,
     body: init.body,
   });
   return { status: res.status, body: await res.text() };
+}
+
+async function tauriFetch(url: string, init: DirectFetchInit): Promise<DirectFetchResult> {
+  // Tauri.ts 注册实现；未注册时降级为 fetch（开发模式 devUrl 下仍受 CORS）
+  if (!tauriFetchImpl) {
+    try {
+      await import('./tauri');
+    } catch {
+      /* 桥不可用 */
+    }
+  }
+  if (tauriFetchImpl) return tauriFetchImpl(url, init);
+  return webFetch(url, init);
+}
+
+/** 统一出口：按运行环境选择绕 CORS 的请求通道。 */
+export async function platformDirectFetch(url: string, init: DirectFetchInit): Promise<DirectFetchResult> {
+  switch (platformKind()) {
+    case 'capacitor': return capacitorFetch(url, init);
+    case 'tauri': return tauriFetch(url, init);
+    default: return webFetch(url, init);
+  }
 }

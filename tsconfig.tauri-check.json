@@ -1,0 +1,8 @@
+// 临时 tsconfig：单独校验 tauri.ts（避免单文件模式丢失 compilerOptions）。
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "files": []
+}

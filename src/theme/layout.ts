@@ -77,3 +77,7 @@ export const Size = {
   /** 桌面标题栏按钮高。 */
   titlebarButton: 36,
 } as const;
+
+/** 页面骨架（唯一事实源的一部分）：官方 AppBar + 统一结构，页面不得自带主题配置。 */
+// 该组件在 src/theme/PageScaffold.tsx（JSX 需要 tsx 扩展），layout.ts 保持纯常量。
+

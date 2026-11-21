@@ -1,0 +1,9 @@
+{
+  "identifier": "default",
+  "description": "Capability for the main window (allow invoking native_fetch and shell-open)",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-open"
+  ]
+}

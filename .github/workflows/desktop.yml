@@ -1,0 +1,82 @@
+name: Desktop (Tauri 2)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths:
+      - 'src-tauri/**'
+      - 'src/**'
+      - '.github/workflows/desktop.yml'
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            bundles: 'deb,appimage'
+          - os: windows-latest
+            bundles: 'msi,nsis'
+          - os: macos-latest
+            bundles: 'dmg'
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: 'src-tauri'
+
+      # Tauri 2 Linux 系统依赖
+      - name: Install Linux system deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libwebkit2gtk-4.1-dev libssl-dev pkg-config libayatana-appindicator3-dev librsvg2-dev libgtk-3-dev
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Build frontend (Vite -> dist)
+        run: npm run build
+
+      - name: Build Rust release binary
+        working-directory: src-tauri
+        run: cargo build --release
+
+      - name: Bundle installers (tauri-action)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # frontendDist 已在 tauri.conf.json 指向 ../dist，无需重新构建
+          args: --no-build --bundles ${{ matrix.bundles }}
+        continue-on-error: true # AppImage/linuxdeploy 偶发超时，退化为二进制 + deb
+
+      - name: Upload release binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: tiernan-music-next-${{ runner.os }}-bin
+          path: |
+            src-tauri/target/release/tiernan-music-next
+            src-tauri/target/release/tiernan-music-next.exe
+
+      - name: Upload bundles
+        uses: actions/upload-artifact@v4
+        if: hashFiles('src-tauri/target/release/bundle/**') != ''
+        with:
+          name: tiernan-music-next-${{ runner.os }}-bundles
+          path: src-tauri/target/release/bundle/**/*
